@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+try TraySetIcon "Debugger.ico"
 ; --- 全局变量定义 ---
 global MyGui := "" ; GUI 对象
 global gFocusedProgramEdit := "" ; 聚焦窗口编辑框
