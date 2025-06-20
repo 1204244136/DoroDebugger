@@ -40,7 +40,7 @@ MyGuiWidth := 300
 ButtonWidth := 50
 ; --- 创建图形用户界面 (GUI) ---
 MyGui := Gui("+AlwaysOnTop")
-MyGui.Title := "DDB v1.1"
+MyGui.Title := "DDB v1.2"
 ; 提示信息
 MyGui.Add("Text", "xm y+10", "注意：标题栏和边框均不属于客户区")
 ; --- 行 1: 当前分辨率 ---
@@ -90,10 +90,21 @@ gSelectionRatioEdit := MyGui.Add("Edit", "x+m yp w150 ReadOnly Left", "")
 ; --- 新增部分: 识图区域压缩 ---
 MyGui.Add("Text", "xm y+10", "--- 识图区域压缩 ---")
 MyGui.Add("Text", "xm y+5", "原识图区域:")
-gOriginalNikkeAreaEdit := MyGui.Add("Edit", "x+m yp w200 H20 Left", "NikkeX, NikkeY, NikkeX + NikkeW, NikkeY + NikkeH")
+; 原始识图区域编辑框，为了对齐，我们先假定一个右边缘X坐标，并给它固定宽度
+; 例如，我们可以将右边缘设置为 MyGuiWidth - 10 (10是右侧的边距)
+originalAreaRightX := MyGuiWidth - 10 ; 假设右侧留10px边距
+originalAreaWidth := 180 ; 保持原有宽度
+originalAreaX := originalAreaRightX - originalAreaWidth
+gOriginalNikkeAreaEdit := MyGui.Add("Edit", "x" . originalAreaX . " yp w" . originalAreaWidth . " H20 Left", "NikkeX, NikkeY, NikkeX + NikkeW, NikkeY + NikkeH")
 MyGui.Add("Text", "xm y+5", "压缩后识图区域:")
-gCompressedNikkeAreaEdit := MyGui.Add("Edit", "x+m yp w100 ReadOnly Left", "")
-copyCompressedAreaButton := MyGui.Add("Button", "yp w" . ButtonWidth, "复制")
+; 压缩后识图区域编辑框，使其右端与原识图区域对齐
+compressedAreaWidth := 180 ; 保持原有宽度
+compressedAreaX := originalAreaRightX - compressedAreaWidth
+gCompressedNikkeAreaEdit := MyGui.Add("Edit", "x" . compressedAreaX . " yp w" . compressedAreaWidth . " Left", "")
+; 将复制按钮移动到下方，并添加解码按钮
+decodeCompressedAreaButton := MyGui.Add("Button", "xm+170 y+5 w" . ButtonWidth, "解码")
+decodeCompressedAreaButton.OnEvent("Click", DecodeCompressedNikkeArea)
+copyCompressedAreaButton := MyGui.Add("Button", "x+m yp w" . ButtonWidth, "复制")
 copyCompressedAreaButton.OnEvent("Click", CopyCompressedNikkeArea)
 ; --- 行 10: 状态信息 (调整位置) ---
 gStatusText := MyGui.Add("Text", "xm y+10 w300 vStatusMessage", "按 Ctrl+Alt+Q 获取信息, Ctrl+Alt+W 选取区域")
@@ -107,6 +118,7 @@ MyGui.Show("w" . MyGuiWidth)
 ; ==============================================================================
 ; --- 函数定义 ---
 ; ==============================================================================
+;
 ; --- 自定义 SetCursor 函数 ---
 SetCursor(cursorType := "") {
     static OCR_NORMAL := 32512, OCR_CROSS := 32515
@@ -573,13 +585,14 @@ CalculatedAreaChanged(GuiCtrlObj, Info) {
 }
 ; --- 计算识图压缩区域函数 ---
 ; 此函数现在由 CalculatedAreaChanged 或 ResolutionChange 或热键触发
+; --- 计算识图压缩区域函数 ---
+; 此函数现在由 CalculatedAreaChanged 或 ResolutionChange 或热键触发
 CalculateNikkeCompressedArea() {
-    global gActualNikkeX, gActualNikkeY, gActualNikkeW, gActualNikkeH ; 使用存储的实际数值 (屏幕绝对坐标)
+    global gActualNikkeX, gActualNikkeY, gActualNikkeW, gActualNikkeH
     global gCompressedNikkeAreaEdit, gStatusText
     global gTargethWnd, gSelectedRefWidth, gSelectedRefHeight
-    global gSelectionRatioEdit ; 用于获取 t1, t2, t3, t4
+    global gSelectionRatioEdit
     local winX, winY, winW, winH
-    ; 初始化局部变量，避免警告
     local t1, t2, t3, t4
     ; 1. 检查目标窗口句柄
     if (!gTargethWnd or !WinExist("ahk_id " . gTargethWnd)) {
@@ -621,22 +634,75 @@ CalculateNikkeCompressedArea() {
     t2 := Format("{:.3f}", match[2] + 0.0)
     t3 := Format("{:.3f}", match[3] + 0.0)
     t4 := Format("{:.3f}", match[4] + 0.0)
-    ; 4. 格式化输出字符串，直接使用提供的公式
+    ; 4. 格式化输出字符串，重新包含 . " " 标记
     local outputStr := ""
     local quote := Chr(34) ; 获取双引号字符
     ; 压缩后的 X1 坐标：NikkeX + t1 * NikkeW
-    outputStr .= "NikkeX + " . t1 . " * NikkeW . " . quote . " " . quote
+    outputStr .= "NikkeX + " . t1 . " * NikkeW" . " . " . quote . " " . quote
     outputStr .= ", "
     ; 压缩后的 Y1 坐标：NikkeY + t2 * NikkeH
-    outputStr .= "NikkeY + " . t2 . " * NikkeH . " . quote . " " . quote
+    outputStr .= "NikkeY + " . t2 . " * NikkeH" . " . " . quote . " " . quote
     outputStr .= ", "
     ; 压缩后的 X2 坐标：NikkeX + t1 * NikkeW + t3 * NikkeW
-    outputStr .= "NikkeX + " . t1 . " * NikkeW + " . t3 . " * NikkeW . " . quote . " " . quote
+    outputStr .= "NikkeX + " . t1 . " * NikkeW + " . t3 . " * NikkeW" . " . " . quote . " " . quote
     outputStr .= ", "
     ; 压缩后的 Y2 坐标：NikkeY + t2 * NikkeH + t4 * NikkeH
-    outputStr .= "NikkeY + " . t2 . " * NikkeH + " . t4 . " * NikkeH . " . quote . " " . quote
+    outputStr .= "NikkeY + " . t2 . " * NikkeH + " . t4 . " * NikkeH" . " . " . quote . " " . quote
     gCompressedNikkeAreaEdit.Value := outputStr
     gStatusText.Value := "识图区域公式已生成。"
+}
+; --- 解码压缩后识图区域按钮事件处理函数 ---
+; --- 解码压缩后识图区域按钮事件处理函数 ---
+; --- 解码压缩后识图区域按钮事件处理函数 ---
+; --- 解码压缩后识图区域按钮事件处理函数 ---
+DecodeCompressedNikkeArea(GuiCtrlObj, Info) {
+    global gCompressedNikkeAreaEdit, gCalculatedAreaEdit, gStatusText
+    global gSelectedRefWidth, gSelectedRefHeight
+    local compressedValue := gCompressedNikkeAreaEdit.Value
+    local decodedX1, decodedY1, decodedX2, decodedY2
+    ; 步骤1：根据提供的核心修复点，移除字符串中的 ". " " " 标记及其前后的空格。
+    ; 修正后的正则表达式：\s*\.\s*"\s*"\s*
+    ; 匹配模式：
+    ; \s* - 匹配零个或多个空格
+    ; \.     - 匹配字面量点号
+    ; \s* - 匹配零个或多个空格
+    ; "      - 匹配第一个双引号
+    ; \s* - 匹配零个或多个空格
+    ; "      - 匹配第二个双引号
+    ; \s* - 匹配零个或多个空格 (这是之前缺失的，确保移除尾部空格)
+    compressedValue := RegExReplace(compressedValue, '\s*\.\s*"\s*"\s*', "")
+    ; MsgBox("清理标记后的字符串: " . compressedValue) ; 调试用，可以取消注释查看中间结果
+    ; 步骤2：解析处理后的字符串，提取 t1, t2, t3, t4
+    ; 现在字符串应该形如 "NikkeX + t1 * NikkeW, NikkeY + t2 * NikkeH, ..."
+    ; 使用精确的正则表达式来捕获浮点数
+    local pattern := "NikkeX\s*\+\s*([\d\.]+)\s*\*\s*NikkeW\s*,\s*NikkeY\s*\+\s*([\d\.]+)\s*\*\s*NikkeH\s*,\s*NikkeX\s*\+\s*([\d\.]+)\s*\*\s*NikkeW\s*\+\s*([\d\.]+)\s*\*\s*NikkeW\s*,\s*NikkeY\s*\+\s*([\d\.]+)\s*\*\s*NikkeH\s*\+\s*([\d\.]+)\s*\*\s*NikkeH"
+    local match
+    if (RegExMatch(compressedValue, pattern, &match)) {
+        local t1_str := match[1]
+        local t2_str := match[2]
+        local t3_str := match[4]
+        local t4_str := match[6]
+        local t1 := t1_str + 0.0
+        local t2 := t2_str + 0.0
+        local t3 := t3_str + 0.0
+        local t4 := t4_str + 0.0
+        if (gSelectedRefWidth <= 0 || gSelectedRefHeight <= 0) {
+            gStatusText.Value := "解码错误: 目标分辨率无效，无法进行逆向换算。"
+            return
+        }
+        ; 步骤3：计算解码后的换算坐标
+        decodedX1 := Round(t1 * gSelectedRefWidth)
+        decodedY1 := Round(t2 * gSelectedRefHeight)
+        decodedX2 := Round((t1 + t3) * gSelectedRefWidth)
+        decodedY2 := Round((t2 + t4) * gSelectedRefHeight)
+        gCalculatedAreaEdit.Value := decodedX1 . ", " . decodedY1 . ", " . decodedX2 . ", " . decodedY2
+        gStatusText.Value := "压缩区域已解码并填入换算区域。"
+    } else {
+        gStatusText.Value := "解码错误: 压缩识图区域格式不正确或为空。"
+        ; 可以在这里额外打印原始和清理后的字符串，方便调试
+        ; MsgBox("原始字符串: " . gCompressedNikkeAreaEdit.Value . "`n清理后的字符串: " . compressedValue . "`n尝试匹配的模式: " . pattern)
+    }
+    SetTimer(() => gStatusText.Value := "", -2000)
 }
 ; --- 复制压缩后识图区域按钮事件处理函数 ---
 CopyCompressedNikkeArea(GuiCtrlObj, Info) {
